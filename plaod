@@ -1,0 +1,381 @@
+local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
+
+-- Gradient function for multi-colored text
+local function gradient(text, startColor, endColor)
+    local result = ""
+    local length = #text
+    for i = 1, length do
+        local t = (i - 1) / math.max(length - 1, 1)
+        local r = math.floor((startColor.R + ((endColor.R - startColor.R) * t)) * 255)
+        local g = math.floor((startColor.G + ((endColor.G - startColor.G) * t)) * 255)
+        local b = math.floor((startColor.B + ((endColor.B - startColor.B) * t)) * 255)
+        local char = text:sub(i, i)
+        result = result .. '<font color="rgb(' .. r .. ", " .. g .. ", " .. b .. ')">' .. char .. "</font>"
+    end
+    return result
+end
+
+-- Confirmation variable
+local Confirmed = false
+
+-- Popup before UI loads
+WindUI:Popup({
+    Title = gradient("DARK MM2", Color3.fromHex("#8B5CF6"), Color3.fromHex("#C084FC")),
+    Icon = "info",
+    Content = gradient("Would You Like To Load ", Color3.fromHex("#A855F7"), Color3.fromHex("#E9D5FF")) .. gradient("DARK MM2?", Color3.fromHex("#8B5CF6"), Color3.fromHex("#C084FC")),
+    Buttons = {
+        {
+            Title = gradient("Cancel", Color3.fromHex("#EF4444"), Color3.fromHex("#991B1B")),
+            Callback = function()
+                -- Script stops, nothing loads
+            end,
+            Variant = "Tertiary",
+        },
+        {
+            Title = gradient("Load", Color3.fromHex("#10B981"), Color3.fromHex("#059669")),
+            Icon = "arrow-right",
+            Callback = function()
+                Confirmed = true
+            end,
+            Variant = "Primary",
+        }
+    }
+})
+
+-- Wait until user confirms
+repeat task.wait() until Confirmed
+
+-- Success notification after confirmation
+WindUI:Notify({
+    Title = gradient("DARK MM2", Color3.fromHex("#8B5CF6"), Color3.fromHex("#C084FC")),
+    Content = "Hub Successfully Loaded! 🎄",
+    Icon = "check-circle",
+    Duration = 3
+})
+
+local Window = WindUI:CreateWindow({
+    Title = gradient("DARK MM2", Color3.fromHex("#8B5CF6"), Color3.fromHex("#C084FC")),
+    Icon = "",
+    Author = "Murder Mystery 2 Hub (Christmas Version ❄️)",
+    Folder = "DARK_MM2_Hub",
+})
+
+-- Tabs
+local spawnTab = Window:Tab({ Title = "Weapon Spawner", Icon = "gift", Locked = false })
+local farmTab = Window:Tab({ Title = "Auto Farm", Icon = "trending-up", Locked = false })
+local teleportTab = Window:Tab({ Title = "Teleport", Icon = "user", Locked = false })
+local espTab = Window:Tab({ Title = "ESP", Icon = "eye", Locked = false })
+
+-- ==================== VARIABLES ====================
+local itemNameInput = ""
+local quantityInput = 0
+
+local autoFarmCandy = false
+local autoFarmSnowflakes = false
+local visitedPositions = {}
+local flySpeed = 16
+local collected = 0
+local currentBagAmount = 0
+local character
+local rootPart
+local autoResetEnabled = false
+local resetting = false
+local bag_full = false
+
+local murderHasKnife = false
+local sheriffHasGun = false
+local currentESPOptions = { "Esp All" }
+local highlightEnabled = true
+local lineESPEnabled = false
+local tracers = {}
+
+local teleportTarget = nil
+local teleportDropdown = nil
+local Murder, Sheriff, Hero = nil, nil, nil
+local roles = {}
+
+-- Services
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+
+-- Purple Theme Colors
+local PurpleTheme = {
+    Primary = Color3.fromHex("#8B5CF6"),
+    Secondary = Color3.fromHex("#A855F7"),
+    Accent = Color3.fromHex("#C084FC"),
+    Dark = Color3.fromHex("#4C1D95"),
+    Light = Color3.fromHex("#E9D5FF"),
+    Success = Color3.fromHex("#10B981"),
+    Warning = Color3.fromHex("#F59E0B"),
+    Error = Color3.fromHex("#EF4444"),
+    Background = Color3.fromHex("#1a1a2e")
+}
+
+-- Player Data
+local success, PlayerData = pcall(function()
+    return require(ReplicatedStorage.Modules.ProfileData)
+end)
+
+if not success then
+    WindUI:Notify({ Title = "Error", Content = "Failed to load PlayerData module!", Duration = 5 })
+    return
+end
+
+local PlayerWeapons = PlayerData.Weapons
+local crate = "Christmas2025Box"
+local _R = ReplicatedStorage
+
+local ITEMS = {
+    Gingerscope = "Gingerscope",
+    Harvester = "Harvester",
+    TreeGun2023 = "TreeGun2023",
+    TreeGun2023Chroma = "TreeGun2023Chroma",
+    TreeKnife2023 = "TreeKnife2023",
+    TreeKnife2023Chroma = "TreeKnife2023Chroma",
+    TravelerGun = "TravelerGun",
+    TravelerGunChroma = "TravelerGunChroma",
+    WaterGunChroma = "WaterGunChroma",
+    BaubleChroma = "BaubleChroma",
+    TravelerAxe = "TravelerAxe",
+    Sunset = "SunsetGun",
+    Sunrise = "SunsetKnife",
+    Icepiercer = "Icepiercer",
+    Raygun = "Raygun",
+    XenoKnife = "XenoKnife",
+    XenoGun = "XenoGun",
+    RaygunChroma = "RaygunChroma",
+    Alienbeam = "UFOKnife"
+}
+
+local inventory = {}
+
+-- ==================== REMOTE CHECK ====================
+local remotesFolder = _R:FindFirstChild("Remotes")
+if not remotesFolder then
+    WindUI:Notify({ Title = "Error", Content = "Remotes Folder Not Found!", Duration = 5 })
+    return
+end
+
+local gameplayFolder = remotesFolder:FindFirstChild("Gameplay")
+local CoinCollected = gameplayFolder and gameplayFolder:FindFirstChild("CoinCollected")
+local shopFolder = remotesFolder:FindFirstChild("Shop")
+if not shopFolder then
+    WindUI:Notify({ Title = "Error", Content = "Shop Folder Not Found!", Duration = 5 })
+    return
+end
+
+local _B = shopFolder:FindFirstChild("BoxController")
+if not _B then
+    WindUI:Notify({ Title = "Error", Content = "Box Controller Not Found!", Duration = 5 })
+    return
+end
+
+-- ==================== TELEPORT FUNCTIONS ====================
+local function IsAlive(player)
+    for name, data in pairs(roles) do
+        if player.Name == name then
+            return not data.Killed and not data.Dead
+        end
+    end
+    return false
+end
+
+local function UpdateRoles()
+    local success, result = pcall(function()
+        return ReplicatedStorage:FindFirstChild("GetPlayerData", true):InvokeServer()
+    end)
+    if success and result then
+        roles = result
+        Murder, Sheriff, Hero = nil, nil, nil
+        for name, data in pairs(roles) do
+            if data.Role == "Murderer" then Murder = name
+            elseif data.Role == "Sheriff" then Sheriff = name
+            elseif data.Role == "Hero" then Hero = name
+            end
+        end
+    end
+end
+
+local function updateTeleportPlayers()
+    local playersList = {"Select Player"}
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            table.insert(playersList, player.Name)
+        end
+    end
+    return playersList
+end
+
+local function teleportToPlayer()
+    if teleportTarget and teleportTarget.Character then
+        local targetRoot = teleportTarget.Character:FindFirstChild("HumanoidRootPart")
+        local localRoot = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if targetRoot and localRoot then
+            localRoot.CFrame = targetRoot.CFrame
+            WindUI:Notify({ Title = "Teleportation", Content = "Teleported to " .. teleportTarget.Name, Icon = "check-circle", Duration = 3 })
+        else
+            WindUI:Notify({ Title = "Error", Content = "Target unavailable", Icon = "x-circle", Duration = 3 })
+        end
+    end
+end
+
+local function teleportToLobby()
+    local lobby = Workspace:FindFirstChild("Lobby")
+    if lobby then
+        local spawnPoint = lobby:FindFirstChild("SpawnPoint") or lobby:FindFirstChildOfClass("SpawnLocation") or lobby:FindFirstChildWhichIsA("BasePart") or lobby
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(spawnPoint.Position + Vector3.new(0,3,0))
+            WindUI:Notify({ Title = "Teleport", Content = "Teleported to Lobby!", Icon = "check-circle", Duration = 2 })
+        end
+    else
+        WindUI:Notify({ Title = "Teleport", Content = "Lobby not found!", Icon = "x-circle", Duration = 2 })
+    end
+end
+
+-- ==================== ESP FUNCTIONS ====================
+local function getRole(player)
+    local character = player.Character
+    if not character then return nil end
+    local backpack = player:FindFirstChild("Backpack")
+    if character:FindFirstChild("Knife") or (backpack and backpack:FindFirstChild("Knife")) then return "Murderer" end
+    if character:FindFirstChild("Gun") or (backpack and backpack:FindFirstChild("Gun")) then return "Sheriff" end
+    return "Innocent"
+end
+
+local function isPlayerTargeted(player, selectedOptions)
+    local role = getRole(player)
+    if not role then return false end
+    if table.find(selectedOptions, "Esp All") then return true end
+    if table.find(selectedOptions, "Esp Murder") and role == "Murderer" then return true end
+    if table.find(selectedOptions, "Esp Sheriff") and role == "Sheriff" then return true end
+    if table.find(selectedOptions, "Esp Sheriff / Murder") and (role == "Sheriff" or role == "Murderer") then return true end
+    return false
+end
+
+local function createHighlight(character, color)
+    local highlight = character:FindFirstChild("RoleHighlight")
+    if not highlight then
+        highlight = Instance.new("Highlight")
+        highlight.Name = "RoleHighlight"
+        highlight.FillTransparency = 0.5
+        highlight.OutlineTransparency = 1
+        highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+        highlight.Adornee = character
+        highlight.Parent = character
+    end
+    highlight.FillColor = color
+end
+
+local function removeHighlight(character)
+    local highlight = character:FindFirstChild("RoleHighlight")
+    if highlight then highlight:Destroy() end
+end
+
+local function createTracer(player, color)
+    local line = Drawing.new("Line")
+    line.Thickness = 2
+    line.Color = color or Color3.new(1,1,1)
+    line.Transparency = 1
+    tracers[player] = line
+end
+
+local function removeTracer(player)
+    if tracers[player] then
+        tracers[player]:Remove()
+        tracers[player] = nil
+    end
+end
+
+local function updateESP()
+    murderHasKnife = false
+    sheriffHasGun = false
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character then
+            local role = getRole(player)
+            if role == "Murderer" then murderHasKnife = true end
+            if role == "Sheriff" then sheriffHasGun = true end
+        end
+    end
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character then
+            local role = getRole(player)
+            local target = isPlayerTargeted(player, currentESPOptions)
+            if highlightEnabled then
+                if target then
+                    local color = role == "Murderer" and PurpleTheme.Error or role == "Sheriff" and PurpleTheme.Success or PurpleTheme.Primary
+                    createHighlight(player.Character, color)
+                else
+                    removeHighlight(player.Character)
+                end
+            else
+                removeHighlight(player.Character)
+            end
+            if lineESPEnabled and target then
+                local color = role == "Murderer" and PurpleTheme.Error or role == "Sheriff" and PurpleTheme.Success or PurpleTheme.Primary
+                if not tracers[player] then createTracer(player, color) else tracers[player].Color = color end
+            else
+                removeTracer(player)
+            end
+        end
+    end
+end
+
+-- ==================== AUTO FARM ====================
+-- Example underground farm position (replace with actual in-game position)
+local undergroundFarmPosition = Vector3.new(0, -50, 0) -- underground
+
+local function teleportToUnderground()
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(undergroundFarmPosition)
+        WindUI:Notify({ 
+            Title = "Auto Farm", 
+            Content = "Teleported to Underground Farm Position! 🎄", 
+            Icon = "check-circle", 
+            Duration = 2 
+        })
+    end
+end
+
+-- Auto farm toggles
+farmTab:Toggle({
+    Title = "Auto Farm Candy",
+    Default = false,
+    Callback = function(value)
+        autoFarmCandy = value
+    end
+})
+
+farmTab:Toggle({
+    Title = "Auto Farm Snowflakes",
+    Default = false,
+    Callback = function(value)
+        autoFarmSnowflakes = value
+    end
+})
+
+-- Underground farm button
+farmTab:Button({
+    Title = "Underground Farm Position",
+    Icon = "gift",
+    Callback = function()
+        teleportToUnderground()
+    end
+})
+
+-- Auto farm loop
+task.spawn(function()
+    while task.wait(1) do
+        if autoFarmCandy or autoFarmSnowflakes then
+            teleportToUnderground()
+            collected = collected + 1
+            print("Collected Items: "..collected)
+        end
+    end
+end)
+
+-- ==================== SCRIPT LOADED ====================
+print("\n✅ DARK MM2 loaded successfully!")
