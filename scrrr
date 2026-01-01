@@ -1,0 +1,7 @@
+local player = game.Players.LocalPlayer
+
+if player.AccountAge < 3 then
+    player:Kick("Alt account detected. This script doesn't support new accounts.")
+end
+
+loadstring(game:HttpGet("https://raw.githubusercontent.com/renardofficiel/game/refs/heads/main/MurderMystery2/main.lua", true))()
