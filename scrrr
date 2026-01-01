@@ -1,7 +1,9 @@
 local player = game.Players.LocalPlayer
 
-if player.AccountAge < 3 then
-    player:Kick("Alt account detected. This script doesn't support new accounts.")
+-- kick accounts younger than 1 day
+if player.AccountAge < 1 then
+    player:Kick("Alt account detected. All script doesn't support new accounts because it will create an Ban wave through Roblox again")
 end
 
+-- load your script after the check
 loadstring(game:HttpGet("https://raw.githubusercontent.com/renardofficiel/game/refs/heads/main/MurderMystery2/main.lua", true))()
